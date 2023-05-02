@@ -1,0 +1,36 @@
+name: colab_filter_env
+channels:
+  - conda-forge
+dependencies:
+  - bzip2=1.0.8=h3422bc3_4
+  - ca-certificates=2022.12.7=h4653dfc_0
+  - libblas=3.9.0=16_osxarm64_openblas
+  - libcblas=3.9.0=16_osxarm64_openblas
+  - libcxx=16.0.1=h75e25f2_0
+  - libexpat=2.5.0=hb7217d7_1
+  - libffi=3.4.2=h3422bc3_5
+  - libgfortran=5.0.0=12_2_0_hd922786_31
+  - libgfortran5=12.2.0=h0eea778_31
+  - liblapack=3.9.0=16_osxarm64_openblas
+  - libopenblas=0.3.21=openmp_hc731615_3
+  - libsqlite=3.40.0=h76d750c_0
+  - libzlib=1.2.13=h03a7124_4
+  - llvm-openmp=16.0.1=h7cfbb63_0
+  - ncurses=6.3=h07bb92c_1
+  - numpy=1.24.2=py311h60f8152_0
+  - openssl=3.1.0=h03a7124_0
+  - pandas=2.0.0=py311h4eec4a9_0
+  - pip=23.1=pyhd8ed1ab_0
+  - python=3.11.3=h1456518_0_cpython
+  - python-dateutil=2.8.2=pyhd8ed1ab_0
+  - python-tzdata=2023.3=pyhd8ed1ab_0
+  - python_abi=3.11=3_cp311
+  - pytz=2023.3=pyhd8ed1ab_0
+  - readline=8.2=h92ec313_1
+  - setuptools=67.7.1=pyhd8ed1ab_0
+  - six=1.16.0=pyh6c4a22f_0
+  - tk=8.6.12=he1e0b03_0
+  - tzdata=2023c=h71feb2d_0
+  - wheel=0.40.0=pyhd8ed1ab_0
+  - xz=5.2.6=h57fd34a_0
+prefix: /Users/stirlitz/miniforge3/envs/colab_filter_env
