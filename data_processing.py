@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import pickle
+
 def load_full_data_set(file_name):
     print(f'Loading data from {file_name}...{file_name}')
     sf3 = pd.read_csv(file_name)
@@ -33,9 +35,9 @@ def get_dimensions(create_dimension_files,all_tickers_file_name,all_investors_fi
         date_index_df.to_csv(all_dates_file_name)
     else:
     # Load the mappings from CSV files
-        ticker_index_df = pd.read_csv(config.all_tickers_file_name, index_col=0)
-        investor_index_df = pd.read_csv(config.all_investors_file_name, index_col=0)
-        date_index_df = pd.read_csv(config.all_dates_file_name, index_col=0)
+        ticker_index_df = pd.read_csv(all_tickers_file_name, index_col=0)
+        investor_index_df = pd.read_csv(all_investors_file_name, index_col=0)
+        date_index_df = pd.read_csv(all_dates_file_name, index_col=0)
     # Convert the DataFrames to dictionaries
         ticker_to_index = ticker_index_df.to_dict()['index']
         investor_to_index = investor_index_df.to_dict()['index']
@@ -68,6 +70,29 @@ def get_dense_values(df,ticker_to_index, investor_to_index, date_to_index):
         #if (count>max_count):
         #    break
     return array_3d
+
+def get_3d_data(create_dense_matrices,ticker_to_index,investor_to_index, date_to_index,df):
+    if(create_dense_matrices==True):
+        array_3d=get_dense_values(df,ticker_to_index, investor_to_index, date_to_index)
+        data_3d={}
+        data_3d["values_file"]="data/values.npz"
+        data_3d["values"]=array_3d
+        data_3d["tickers"]=list(ticker_to_index.keys())
+        data_3d["investors"]=list(investor_to_index.keys())
+        data_3d["dates"]=list(date_to_index.keys())
+        data_3d["ticker_to_index"]=ticker_to_index
+        data_3d["investor_to_index"]=investor_to_index
+        data_3d["date_to_index"]=date_to_index
+
+        # save the dictionary
+        with open('data/3d_data_with_dimensions.pickle', 'wb') as handle:
+            pickle.dump(data_3d, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    else:
+        with open('data/3d_data_with_dimensions.pickle', 'rb') as handle:
+            data_3d = pickle.load(handle)
+    return data_3d
+
+#data_3d=get_3d_data(config,df)
 
 
 if __name__ == '__main__':
