@@ -46,7 +46,7 @@ def get_dimensions(create_dimension_files,all_tickers_file_name,all_investors_fi
 
 #(ticker_to_index, investor_to_index, date_to_index)=get_dimensions(config,df)
 
-def get_dense_values(df,ticker_to_index, investor_to_index, date_to_index):
+def get_dense_values(df,ticker_to_index, investor_to_index, date_to_index,measure_field_name):
     num_tickers = len(ticker_to_index)
     num_investors = len(investor_to_index)
     num_dates = len(date_to_index)
@@ -59,7 +59,7 @@ def get_dense_values(df,ticker_to_index, investor_to_index, date_to_index):
     count=0
     max_count=15
     for idx, row in df.iterrows():
-        array_3d[ticker_to_index[row['ticker']], investor_to_index[row['investorname']], date_to_index[row['calendardate']]] = row['value']
+        array_3d[ticker_to_index[row['ticker']], investor_to_index[row['investorname']], date_to_index[row['calendardate']]] = row[measure_field_name]
         #print(f'row["value"]={row["value"]}')
         ticker=row["ticker"]
         investorname=row['investorname']
@@ -77,12 +77,12 @@ def get_3d_data(create_dense_matrices,ticker_to_index,investor_to_index, date_to
         data_3d={}
         data_3d["values_file"]="data/values.npz"
         data_3d["values"]=array_3d
-        data_3d["tickers"]=list(ticker_to_index.keys())
-        data_3d["investors"]=list(investor_to_index.keys())
-        data_3d["dates"]=list(date_to_index.keys())
-        data_3d["ticker_to_index"]=ticker_to_index
-        data_3d["investor_to_index"]=investor_to_index
-        data_3d["date_to_index"]=date_to_index
+        #data_3d["tickers"]=list(ticker_to_index.keys())
+        #data_3d["investors"]=list(investor_to_index.keys())
+        #data_3d["dates"]=list(date_to_index.keys())
+        #data_3d["ticker_to_index"]=ticker_to_index
+        #data_3d["investor_to_index"]=investor_to_index
+        #data_3d["date_to_index"]=date_to_index
 
         # save the dictionary
         with open('data/3d_data_with_dimensions.pickle', 'wb') as handle:
