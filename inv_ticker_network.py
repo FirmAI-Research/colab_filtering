@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn.init as init
 from sklearn.model_selection import train_test_split
 import math
+from torch.utils.tensorboard import SummaryWriter
 
 class DataSetDescription:
     def __init__(self, df):
@@ -300,12 +301,27 @@ def main(config):
     #split into validation and training sets
     if config.test_run:
         df_indexed=df_indexed.head(1000)
+    print(f'df_indexed.shape before filtering = {df_indexed.shape}')
+    df_indexed=df_indexed[(df_indexed['value']>-.2) & (df_indexed['value']<.2)]
+    print(f'df_indexed.shape after filtering = {df_indexed.shape}')
+    #Scale by 100 to make numvers more reasonable?
+    df_indexed['value']=df_indexed['value'].astype(float)
+    mu=np.mean(df_indexed['value'])
+    std=np.std(df_indexed['value'])
+    df_indexed['value']=(df_indexed['value']-mu)/std
+    #df_indexed['value'] = (df_indexed['value'] - np.mean(df_indexed['value'])) / (np.std(df_indexed['value']) + 1e-6)
+    print(f'rescaling value: mu={mu},std={std}')
+
+    #df_indexed=df_indexed[np.abs(df_indexed['value'])>0.0001]
     df_train, df_validate=train_test_split(df_indexed,test_size=0.2,random_state=42)
     print(f'df_train.shape={df_train.shape}')
-    print(f'{df_train.head()}')
+    print(f'{df_train[["ticker","investorname","calendardate","value"]].head()}')
     df_train.to_csv('df_train.csv')
     ds = NoLookupDataSet(df_train)
+    ds_validate=NoLookupDataSet(df_validate)
     loader=DataLoader(ds,batch_size=config.batch_size,shuffle=True)
+    loader_validate=DataLoader(ds_validate,batch_size=config.batch_size,shuffle=False)
+
     #create the model
 
     #create the model
@@ -318,15 +334,18 @@ def main(config):
 
     loss_function = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+
+    writer = SummaryWriter(config.logdir)
+
     for epoch in range(num_epochs):
         total_loss = 0
-        print(f'epoch={epoch}')
+        #print(f'epoch={epoch}')
         num_batches=len(loader)
         for (batch_idx, batch) in enumerate(loader):
             (investor_idx, ticker_idx, date_idx, ticker_date_idx, ownership) = batch
             model.zero_grad()
             ownership_pred = model(investor_idx, ticker_idx, date_idx, ticker_date_idx)
-            loss = loss_function(torch.sign(ownership_pred), ownership)
+            loss = loss_function(ownership_pred*10, ownership*10)
             if math.isnan(loss.item()) or math.isinf(loss.item()):
                 print(f'loss is nan for batch_idx={batch_idx}')
                 print(f'target={ownership}')
@@ -338,13 +357,25 @@ def main(config):
                 print(f'model.investor_factors={model.investor_factors(investor_idx)}')
                 print(f'model.ticker_date_factors={model.ticker_date_factors(ticker_date_idx)}')
                 break
-            loss.backward()
-            optimizer.step()
+        loss.backward()
+        optimizer.step()
 
-            total_loss += loss.item()/num_batches
-            #if batch_idx % 100 == 0:
-                #print(f'batch_idx={batch_idx}/{num_batches} loss={loss.item()}')
+        total_loss += loss.item()/num_batches
         print(f'epoch={epoch} total_loss={total_loss}')
+        #if batch_idx % 100 == 0:
+            #print(f'batch_idx={batch_idx}/{num_batches} loss={loss.item()}')
+        #run the validation
+        if(epoch % 5 == 0):
+            total_loss_validate=0
+            num_batches_validate=len(loader_validate)
+            for (batch_idx, batch) in enumerate(loader_validate):
+                (investor_idx, ticker_idx, date_idx, ticker_date_idx, ownership) = batch
+                ownership_pred = model(investor_idx, ticker_idx, date_idx, ticker_date_idx)
+                loss = loss_function(ownership_pred, ownership)
+                total_loss_validate += loss.item()/num_batches_validate
+            print(f'epoch={epoch} validation loss={total_loss_validate}')
+        writer.add_scalar('training/MSE', total_loss, epoch)
+        writer.add_scalar('validation/MSE', total_loss_validate, epoch)
 
     #save the model
     torch.save(model.state_dict(), 'model.pth')
@@ -385,6 +416,7 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=0.01, help='the learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.1, help='the weight decay')
     parser.add_argument('--remove_str_columns', type=bool, default=True, help='whether to remove the string columns')
+    parser.add_argument('--logdir', type=str, default='runs', help='the log directory')
     parser.add_argument('--test_run', type=bool, default=False, help='whether to run a test run')
     # Parse the command line arguments
     args = parser.parse_args()
