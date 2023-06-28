@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn.init as init
 from sklearn.model_selection import train_test_split
 import math
+import tensorflow as tf
 from torch.utils.tensorboard import SummaryWriter
 
 class DataSetDescription:
@@ -171,8 +172,8 @@ class NoLookupDataSet(Dataset):
         date_idx=torch.tensor(row['calendardate_idx'], dtype=torch.long)
         ticker_date2idx=torch.tensor(row['ticker_date_idx'], dtype=torch.long)
         target = torch.tensor(float(row['value']), dtype=torch.float)
-        if(math.fabs(target)>.2):
-            target=torch.tensor(0.0, dtype=torch.float)
+        #if(math.fabs(target)>.2):
+        #    target=torch.tensor(0.0, dtype=torch.float)
         #print(f'investor_idx={investor_idx}, stock_idx={stock_idx}, date_idx={date_idx}, target={target}')
         return investor_idx, stock_idx, date_idx, ticker_date2idx ,target
     
@@ -206,7 +207,7 @@ class MatrixFactorization(nn.Module):
         #self.ticker_bias = nn.Embedding(num_tickers, 1)
         #self.date_bias = nn.Embedding(num_dates, 1)
         #self.ticker_date_bias = nn.Embedding(num_tickers*num_dates, 1)
-        initrange = 0.5 / num_factors
+        initrange = 1 / np.log(num_factors)
         init.uniform_(self.investor_factors.weight, -initrange, initrange)
         init.uniform_(self.ticker_date_factors.weight, -initrange, initrange)
 
@@ -302,13 +303,16 @@ def main(config):
     if config.test_run:
         df_indexed=df_indexed.head(1000)
     print(f'df_indexed.shape before filtering = {df_indexed.shape}')
-    df_indexed=df_indexed[(df_indexed['value']>-.2) & (df_indexed['value']<.2)]
+    df_indexed=df_indexed[(df_indexed['value']>-config.remove_threshold) & (df_indexed['value']<config.remove_threshold)]
     print(f'df_indexed.shape after filtering = {df_indexed.shape}')
     #Scale by 100 to make numvers more reasonable?
     df_indexed['value']=df_indexed['value'].astype(float)
     mu=np.mean(df_indexed['value'])
     std=np.std(df_indexed['value'])
     df_indexed['value']=(df_indexed['value']-mu)/std
+    #check the mean square value of df_indexed['value']
+    print(f'mean square value of df_indexed["value"] = {np.sqrt(np.mean(df_indexed["value"]**2))}')
+    print (f'mean value of df_indexed["value"] = {np.mean(df_indexed["value"])}')
     #df_indexed['value'] = (df_indexed['value'] - np.mean(df_indexed['value'])) / (np.std(df_indexed['value']) + 1e-6)
     print(f'rescaling value: mu={mu},std={std}')
 
@@ -316,6 +320,8 @@ def main(config):
     df_train, df_validate=train_test_split(df_indexed,test_size=0.2,random_state=42)
     print(f'df_train.shape={df_train.shape}')
     print(f'{df_train[["ticker","investorname","calendardate","value"]].head()}')
+    std_train=np.std(df_train['value'])
+    print(f'std_train={std_train}')
     df_train.to_csv('df_train.csv')
     ds = NoLookupDataSet(df_train)
     ds_validate=NoLookupDataSet(df_validate)
@@ -336,6 +342,25 @@ def main(config):
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
     writer = SummaryWriter(config.logdir)
+    total_loss=0
+    total_ownership=0
+    num_batches_validate=len(loader_validate)
+    num_batches=len(loader)
+    total_ownership=0
+    #create a tensor to hold the ownership values, then keep concatenating batch ownership values to it
+    ownership_tensor=torch.tensor([])
+    for (batch_idx, batch) in enumerate(loader):
+        (investor_idx, ticker_idx, date_idx, ticker_date_idx, ownership) = batch
+        ownership=ownership.float()
+        ownership_pred = model(investor_idx, ticker_idx, date_idx, ticker_date_idx)
+        loss = loss_function(ownership_pred, ownership)
+        ownership_tensor=torch.cat((ownership_tensor,ownership.detach().flatten()))
+        total_ownership+=(ownership**2).sum()/ownership.shape[0]/num_batches
+        total_loss += loss.item()/num_batches
+    print(f'initial parameters loss: loss={total_loss} ownership={torch.sqrt(torch.mean(ownership_tensor**2))}')
+    print(f'mean of ownership={torch.mean(ownership_tensor)}')
+    print(f'std of ownership={torch.std(ownership_tensor)}')
+
 
     for epoch in range(num_epochs):
         total_loss = 0
@@ -345,7 +370,7 @@ def main(config):
             (investor_idx, ticker_idx, date_idx, ticker_date_idx, ownership) = batch
             model.zero_grad()
             ownership_pred = model(investor_idx, ticker_idx, date_idx, ticker_date_idx)
-            loss = loss_function(ownership_pred*10, ownership*10)
+            loss = loss_function(ownership_pred, ownership)
             if math.isnan(loss.item()) or math.isinf(loss.item()):
                 print(f'loss is nan for batch_idx={batch_idx}')
                 print(f'target={ownership}')
@@ -377,6 +402,11 @@ def main(config):
         writer.add_scalar('training/MSE', total_loss, epoch)
         writer.add_scalar('validation/MSE', total_loss_validate, epoch)
 
+        investor_embedding_weights = model.investor_factors.weight.data.cpu().numpy()
+        #writer.add_embedding(investor_embedding_weights, metadata=sf3_description.investor2idx.keys(), tag='investor_factors',global_step=epoch)
+        #ticker_embedding_weights = model.ticker_date_factors.weight.data.cpu().numpy()
+        #writer.add_embedding(ticker_embedding_weights, metadata=sf3_description.ticker_date2idx.keys(), tag='ticker_date_factors',global_step=epoch)
+        #writer.flush()
     #save the model
     torch.save(model.state_dict(), 'model.pth')
 
@@ -418,6 +448,7 @@ if __name__ == '__main__':
     parser.add_argument('--remove_str_columns', type=bool, default=True, help='whether to remove the string columns')
     parser.add_argument('--logdir', type=str, default='runs', help='the log directory')
     parser.add_argument('--test_run', type=bool, default=False, help='whether to run a test run')
+    parser.add_argument('--remove_threshold', type=float, default=0.1, help='the threshold for removing rows')
     # Parse the command line arguments
     args = parser.parse_args()
 
