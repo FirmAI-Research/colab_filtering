@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 import math
 import tensorflow as tf
 from torch.utils.tensorboard import SummaryWriter
+import scipy
 
 class DataSetDescription:
     def __init__(self, df):
@@ -289,6 +290,17 @@ def main(config):
     learning_rate=config.learning_rate
     num_factors=config.num_factors
 
+    use_gpu = False
+    if config.device == "gpu" and torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        device = torch.device("mps")
+        use_gpu = True
+    elif config.device == "gpu" and torch.cuda.is_available():
+        device = torch.device("cuda")
+        use_gpu = True
+    else:
+        device = torch.device("cpu")
+    print("Using device: ", device)
+
     sf3 = pd.read_csv(relational_df_path)
     sf3 = sf3.dropna()
     #run the code to process the dataframe
@@ -308,13 +320,27 @@ def main(config):
     #Scale by 100 to make numvers more reasonable?
     df_indexed['value']=df_indexed['value'].astype(float)
     mu=np.mean(df_indexed['value'])
+    std1=np.std(df_indexed['value'])
+    all_values=df_indexed['value'].copy()
+    cdfs=scipy.stats.lognorm.cdf(all_values,s=std1,loc=mu,scale=1)
+    print(f'all_values.shape={all_values.shape}')
+    print(f'cdfs.shape={cdfs.shape}')
+    #put all_values and cdfs next to each other and print
+    df_temp=pd.DataFrame({'value':all_values,'cdf':cdfs})
+    print(df_temp.head(1000))
+    df_indexed['value'] = scipy.stats.lognorm(s=std1, scale=np.exp(0)).cdf(1+df_indexed['value'])
+    temp=scipy.stats.lognorm(s=std1, scale=np.exp(0)).cdf(df_indexed['value'])
+    print(f'tem[0:10]={temp[0:10]}')
+    print("df_index transformed ={0}".format(df_indexed[['ticker','investorname','calendardate']].head()))
+    mu=np.mean(df_indexed['value'])
     std=np.std(df_indexed['value'])
     df_indexed['value']=(df_indexed['value']-mu)/std
+    print(f'df_indexed.shape after filtering = {df_indexed.shape}')
     #check the mean square value of df_indexed['value']
     print(f'mean square value of df_indexed["value"] = {np.sqrt(np.mean(df_indexed["value"]**2))}')
     print (f'mean value of df_indexed["value"] = {np.mean(df_indexed["value"])}')
     #df_indexed['value'] = (df_indexed['value'] - np.mean(df_indexed['value'])) / (np.std(df_indexed['value']) + 1e-6)
-    print(f'rescaling value: mu={mu},std={std}')
+    print(f'rescaling value: initial std={std1} mu={mu},std={std}')
 
     #df_indexed=df_indexed[np.abs(df_indexed['value'])>0.0001]
     df_train, df_validate=train_test_split(df_indexed,test_size=0.2,random_state=42)
@@ -349,7 +375,11 @@ def main(config):
     total_ownership=0
     #create a tensor to hold the ownership values, then keep concatenating batch ownership values to it
     ownership_tensor=torch.tensor([])
+    model.to(device)
+    ownership_tensor=ownership_tensor.to(device)
+
     for (batch_idx, batch) in enumerate(loader):
+        batch = [b.to(device) for b in batch]
         (investor_idx, ticker_idx, date_idx, ticker_date_idx, ownership) = batch
         ownership=ownership.float()
         ownership_pred = model(investor_idx, ticker_idx, date_idx, ticker_date_idx)
@@ -366,7 +396,10 @@ def main(config):
         total_loss = 0
         #print(f'epoch={epoch}')
         num_batches=len(loader)
+        if (epoch==0):
+            print("num_batches={0}".format(num_batches))
         for (batch_idx, batch) in enumerate(loader):
+            batch=[b.to(device) for b in batch]
             (investor_idx, ticker_idx, date_idx, ticker_date_idx, ownership) = batch
             model.zero_grad()
             ownership_pred = model(investor_idx, ticker_idx, date_idx, ticker_date_idx)
@@ -382,10 +415,9 @@ def main(config):
                 print(f'model.investor_factors={model.investor_factors(investor_idx)}')
                 print(f'model.ticker_date_factors={model.ticker_date_factors(ticker_date_idx)}')
                 break
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item()/num_batches
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.cpu().item()/num_batches
         print(f'epoch={epoch} total_loss={total_loss}')
         #if batch_idx % 100 == 0:
             #print(f'batch_idx={batch_idx}/{num_batches} loss={loss.item()}')
@@ -394,18 +426,19 @@ def main(config):
             total_loss_validate=0
             num_batches_validate=len(loader_validate)
             for (batch_idx, batch) in enumerate(loader_validate):
+                batch=[b.to(device) for b in batch]
                 (investor_idx, ticker_idx, date_idx, ticker_date_idx, ownership) = batch
                 ownership_pred = model(investor_idx, ticker_idx, date_idx, ticker_date_idx)
                 loss = loss_function(ownership_pred, ownership)
-                total_loss_validate += loss.item()/num_batches_validate
+                total_loss_validate += loss.cpu().item()/num_batches_validate
             print(f'epoch={epoch} validation loss={total_loss_validate}')
         writer.add_scalar('training/MSE', total_loss, epoch)
         writer.add_scalar('validation/MSE', total_loss_validate, epoch)
 
         investor_embedding_weights = model.investor_factors.weight.data.cpu().numpy()
-        #writer.add_embedding(investor_embedding_weights, metadata=sf3_description.investor2idx.keys(), tag='investor_factors',global_step=epoch)
-        #ticker_embedding_weights = model.ticker_date_factors.weight.data.cpu().numpy()
-        #writer.add_embedding(ticker_embedding_weights, metadata=sf3_description.ticker_date2idx.keys(), tag='ticker_date_factors',global_step=epoch)
+        writer.add_embedding(investor_embedding_weights, metadata=sf3_description.investor2idx.keys(), tag='investor_factors',global_step=epoch)
+        ticker_embedding_weights = model.ticker_date_factors.weight.data.cpu().numpy()
+        writer.add_embedding(ticker_embedding_weights, metadata=sf3_description.ticker_date2idx.keys(), tag='ticker_date_factors',global_step=epoch)
         #writer.flush()
     #save the model
     torch.save(model.state_dict(), 'model.pth')
@@ -449,6 +482,7 @@ if __name__ == '__main__':
     parser.add_argument('--logdir', type=str, default='runs', help='the log directory')
     parser.add_argument('--test_run', type=bool, default=False, help='whether to run a test run')
     parser.add_argument('--remove_threshold', type=float, default=0.1, help='the threshold for removing rows')
+    parser.add_argument('--device', type=str, default="cpu", help='the device to run on')
     # Parse the command line arguments
     args = parser.parse_args()
 
