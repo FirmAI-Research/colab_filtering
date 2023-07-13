@@ -4,6 +4,7 @@ import pickle
 
 def load_full_data_set(file_name):
     print(f'Loading data from {file_name}...{file_name}')
+    #may need to split pre processing into a separate function
     sf3 = pd.read_csv(file_name)
     sf3 = sf3.dropna()
     df=sf3

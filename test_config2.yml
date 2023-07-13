@@ -1,0 +1,22 @@
+[input_data]
+  input_path: data
+  ownership_file: SHARADAR_holdings.csv
+  #will probably have an additional path parameter for these
+  ticker_dimension_file: ticker_dimension.csv
+  investor_dimension_file: investor_dimension.csv
+  date_dimension_file: date_dimension.csv
+[cache_data]
+  cache_path: data/pipeline1
+  cache_file: intermediate_value.pkl  
+[output_data] 
+  output_path: data/pipeline1
+  values_filename: test_output.csv
+  values_file_type: relational
+  inferred_ticker_dimension: inferred_ticker_dim.csv
+  inferred_date_dimension: inferred_date_dim.csv
+  inferred_investorname_dimension: inferred_investorname_dim.csv
+  ticker_dimension: ticker_dimension.csv
+  date_dimension: date_dimension.csv
+  investor_dimension: investor_dimension.csv
+
+
