@@ -68,6 +68,8 @@ def convert_to_relational(data,x,y,z):
     #df['investorname']=y[ind[1].flatten()]
     #df['calendardate']=z[ind[2].flatten()]
     #df['value']=data.flatten()
+    print("converting the datqa")
+    print(df.head())
 
     return df
 
@@ -107,8 +109,9 @@ def main(config):
     print(df.head())
     t_arr=np.ones(sz)
     t_arr=normalize_along_investorname(t_arr)
-    print(f't_arr: {t_arr}')
-    print(f't_arr.sum(axis=0): {t_arr.sum(axis=0)}')
+    df.to_csv('test.csv',index=False)
+    #print(f't_arr: {t_arr}')
+    #print(f't_arr.sum(axis=0): {t_arr.sum(axis=0)}')
 
 
 
